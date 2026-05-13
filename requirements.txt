@@ -1,5 +1,4 @@
 customtkinter
-scapy
 packaging
 darkdetect
 netifaces

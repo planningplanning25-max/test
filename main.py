@@ -84,17 +84,12 @@ class App(ctk.CTk):
         threading.Thread(target=self.run_scan, daemon=True).start()
 
     def run_scan(self):
-        network = get_local_network()
-        if network:
+        base_ip = get_local_network()
+        if base_ip:
             try:
-                self.devices = scan(network)
-            except ImportError:
-                self.after(0, lambda: messagebox.showerror("خطأ", "يجب تثبيت Npcap أو WinPcap لتشغيل فحص الشبكة.\nيرجى تثبيت Npcap من الموقع الرسمي."))
-                self.devices = []
+                self.devices = scan(base_ip)
             except Exception as e:
                 error_msg = str(e)
-                if "libpcap" in error_msg or "pcap" in error_msg:
-                    error_msg = "يجب تثبيت Npcap أو WinPcap لتشغيل فحص الشبكة."
                 self.after(0, lambda msg=error_msg: messagebox.showerror("خطأ في الفحص", f"فشل فحص الشبكة: {msg}"))
                 self.devices = []
         else:

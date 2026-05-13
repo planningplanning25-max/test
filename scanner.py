@@ -1,7 +1,10 @@
-import scapy.all as scapy
+import subprocess
 import socket
 import netifaces
 import threading
+import platform
+import re
+from concurrent.futures import ThreadPoolExecutor
 
 def get_local_network():
     try:
@@ -18,10 +21,9 @@ def get_local_network():
         ip = iface_details[0]['addr']
         netmask = iface_details[0]['netmask']
 
-        # Calculate CIDR
-        cidr = sum(bin(int(x)).count('1') for x in netmask.split('.'))
-        network = ".".join(ip.split('.')[:-1]) + ".0/" + str(cidr)
-        return network
+        # Determine base IP for /24 network
+        base_ip = ".".join(ip.split('.')[:-1])
+        return base_ip
     except Exception:
         return None
 
@@ -32,15 +34,56 @@ def get_hostname(ip):
     except socket.herror:
         return "Unknown"
 
-def scan(network):
-    arp_request = scapy.ARP(pdst=network)
-    broadcast = scapy.Ether(dst="ff:ff:ff:ff:ff:ff")
-    arp_request_broadcast = broadcast/arp_request
-    answered_list = scapy.srp(arp_request_broadcast, timeout=2, verbose=False)[0]
+def ping_ip(ip):
+    """
+    Returns (ip, status)
+    """
+    param = '-n' if platform.system().lower() == 'windows' else '-c'
+    command = ['ping', param, '1', '-w', '500', ip]
+    try:
+        output = subprocess.run(command, capture_output=True, text=True, timeout=1)
+        if output.returncode == 0:
+            return ip, True
+    except:
+        pass
+    return ip, False
+
+def get_mac_from_arp(target_ip):
+    """
+    Tries to find MAC address from the system ARP cache
+    """
+    try:
+        output = subprocess.check_output(['arp', '-a', target_ip], text=True, stderr=subprocess.STDOUT)
+        # Search for MAC address pattern
+        mac_pattern = r"([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})"
+        match = re.search(mac_pattern, output)
+        if match:
+            return match.group(0)
+    except:
+        pass
+    return "Unknown"
+
+def scan(base_ip):
+    """
+    Scans the /24 network using Ping and ARP cache
+    """
+    if not base_ip:
+        return []
 
     devices_list = []
-    for element in answered_list:
-        ip = element[1].psrc
-        device_info = {"ip": ip, "mac": element[1].hwsrc, "hostname": get_hostname(ip)}
-        devices_list.append(device_info)
+    ips_to_scan = [f"{base_ip}.{i}" for i in range(1, 255)]
+
+    with ThreadPoolExecutor(max_workers=50) as executor:
+        results = list(executor.map(ping_ip, ips_to_scan))
+
+    for ip, active in results:
+        if active:
+            hostname = get_hostname(ip)
+            mac = get_mac_from_arp(ip)
+            devices_list.append({
+                "ip": ip,
+                "mac": mac,
+                "hostname": hostname
+            })
+
     return devices_list
