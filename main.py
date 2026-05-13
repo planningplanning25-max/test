@@ -88,8 +88,14 @@ class App(ctk.CTk):
         if network:
             try:
                 self.devices = scan(network)
+            except ImportError:
+                self.after(0, lambda: messagebox.showerror("خطأ", "يجب تثبيت Npcap أو WinPcap لتشغيل فحص الشبكة.\nيرجى تثبيت Npcap من الموقع الرسمي."))
+                self.devices = []
             except Exception as e:
-                self.after(0, lambda: messagebox.showerror("خطأ في الفحص", f"فشل فحص الشبكة: {e}"))
+                error_msg = str(e)
+                if "libpcap" in error_msg or "pcap" in error_msg:
+                    error_msg = "يجب تثبيت Npcap أو WinPcap لتشغيل فحص الشبكة."
+                self.after(0, lambda msg=error_msg: messagebox.showerror("خطأ في الفحص", f"فشل فحص الشبكة: {msg}"))
                 self.devices = []
         else:
             self.after(0, lambda: messagebox.showerror("خطأ", "لم يتم العثور على شبكة محلية نشطة."))
